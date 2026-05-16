@@ -3,3 +3,5 @@ pandas
 python-dotenv
 requests
 tabulate
+streamlit
+openpyxl
