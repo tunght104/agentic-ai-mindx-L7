@@ -82,6 +82,7 @@ if st.button("📥 Tải dữ liệu từ Google Sheet"):
         csv_url = get_csv_url(sheet_url)
         response = requests.get(csv_url)
         response.raise_for_status()
+        response.encoding = 'utf-8'  # Force UTF-8 encoding
         df = pd.read_csv(io.StringIO(response.text))
         st.session_state['df_leads'] = df
         st.success(f"Đã tải {len(df)} khách hàng thành công!")
