@@ -205,7 +205,7 @@ if 'df_leads' in st.session_state:
             color = '#ff4b4b' if val == 'Trash' else '#28a745' if val == 'VIP' else '#ffa500'
             return f'color: {color}; font-weight: bold'
         
-        st.dataframe(st.session_state['scored_df'].style.applymap(color_category, subset=['Category']), use_container_width=True)
+        st.dataframe(st.session_state['scored_df'].style.map(color_category, subset=['Category']), use_container_width=True)
         
         # Step 3: Export
         st.divider()
