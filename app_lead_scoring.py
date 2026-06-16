@@ -59,10 +59,91 @@ def load_data_from_url(sheet_url):
     return conn.read(spreadsheet=sheet_url, ttl=0)
 
 def write_data_to_url(sheet_url, df_scored):
-    """Writes the scored data back to the Google Sheet URL."""
-    from streamlit_gsheets import GSheetsConnection
-    conn = st.connection("gsheets", type=GSheetsConnection)
-    conn.update(spreadsheet=sheet_url, data=df_scored)
+    """Writes only the Score, Category, and Reasoning columns back to the Google Sheet without overwriting other data or new rows."""
+    import gspread
+    from google.oauth2.service_account import Credentials
+    import os
+    
+    # 1. Định nghĩa quyền truy cập (Scopes)
+    scopes = [
+        "https://www.googleapis.com/auth/spreadsheets",
+        "https://www.googleapis.com/auth/drive"
+    ]
+    
+    # 2. Lấy thông tin cấu hình (Ưu tiên Streamlit Secrets, sau đó tới credentials.json)
+    if "connections" in st.secrets and "gsheets" in st.secrets["connections"]:
+        secret_dict = dict(st.secrets["connections"]["gsheets"])
+    elif os.path.exists("credentials.json"):
+        with open("credentials.json", "r", encoding="utf-8") as f:
+            secret_dict = json.load(f)
+    else:
+        raise FileNotFoundError("Không tìm thấy cấu hình Service Account (vui lòng thiết lập Streamlit Secrets hoặc thêm tệp credentials.json).")
+    
+    # Xử lý ký tự xuống dòng và làm sạch định dạng private key theo chuẩn PEM (tránh lỗi Unable to load PEM file)
+    if "private_key" in secret_dict and isinstance(secret_dict["private_key"], str):
+        pk_cleaned = secret_dict["private_key"].replace("\\n", "\n")
+        pk_lines = [line.strip() for line in pk_cleaned.split("\n") if line.strip()]
+        secret_dict["private_key"] = "\n".join(pk_lines)
+        
+    # 3. Kích hoạt thông tin xác thực
+    creds = Credentials.from_service_account_info(secret_dict, scopes=scopes)
+    client = gspread.authorize(creds)
+    
+    # 4. Mở Google Sheet bằng URL và lấy Sheet đầu tiên
+    sheet = client.open_by_url(sheet_url)
+    worksheet = sheet.get_worksheet(0)
+    
+    # 5. Đọc dòng tiêu đề (Header row 1)
+    headers = worksheet.row_values(1)
+    
+    # Hàm lấy index cột hoặc thêm cột mới nếu chưa có
+    def get_or_append_col(col_name):
+        if col_name in headers:
+            return headers.index(col_name) + 1
+        else:
+            headers.append(col_name)
+            # Cập nhật tiêu đề cột mới lên dòng 1 của Google Sheet
+            worksheet.update_cell(1, len(headers), col_name)
+            return len(headers)
+            
+    score_col = get_or_append_col("Score")
+    category_col = get_or_append_col("Category")
+    reasoning_col = get_or_append_col("Reasoning")
+    
+    # Chuyển đổi chỉ số cột số thành ký tự chữ (VD: 1 -> A, 27 -> AA)
+    def col_to_letter(col):
+        letter = ""
+        while col > 0:
+            col, remainder = divmod(col - 1, 26)
+            letter = chr(65 + remainder) + letter
+        return letter
+        
+    N = len(df_scored)
+    score_vals = [[x] for x in df_scored["Score"].tolist()]
+    category_vals = [[x] for x in df_scored["Category"].tolist()]
+    reasoning_vals = [[x] for x in df_scored["Reasoning"].tolist()]
+    
+    score_letter = col_to_letter(score_col)
+    category_letter = col_to_letter(category_col)
+    reasoning_letter = col_to_letter(reasoning_col)
+    
+    # Cập nhật hàng loạt (batch_update) chỉ trên các cột tương ứng từ dòng 2 đến dòng N+1
+    updates = [
+        {
+            "range": f"{score_letter}2:{score_letter}{N+1}",
+            "values": score_vals
+        },
+        {
+            "range": f"{category_letter}2:{category_letter}{N+1}",
+            "values": category_vals
+        },
+        {
+            "range": f"{reasoning_letter}2:{reasoning_letter}{N+1}",
+            "values": reasoning_vals
+        }
+    ]
+    
+    worksheet.batch_update(updates)
 
 def load_scoring_skill():
     """Loads the scoring criteria from the markdown file."""
