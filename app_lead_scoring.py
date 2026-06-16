@@ -122,29 +122,49 @@ def keyword_scoring(description):
 # Sidebar - Settings
 st.sidebar.title("⚙️ Cấu hình")
 api_key = st.sidebar.text_input("Gemini API Key", type="password", value=os.getenv("GEMINI_API_KEY", ""))
-sheet_url = st.sidebar.text_input("Google Sheet URL", value="https://docs.google.com/spreadsheets/d/1PtYHhTapnRp8bOVYCxkAaEb37G_7iva99xnmoO-lvG0/edit?usp=sharing")
+if not api_key:
+    st.sidebar.info("💡 Điền Gemini API Key ở trên để sử dụng mô hình AI. Nếu không điền, bạn vẫn có thể sử dụng chế độ chấm điểm bằng Từ khóa (Rule-based).")
 
 # Main UI
 st.title("🏡 Real Estate Lead Scoring AI")
 st.markdown("Hệ thống tự động đánh giá và phân loại khách hàng tiềm năng bằng trí tuệ nhân tạo.")
 
-if not api_key:
-    st.warning("⚠️ Vui lòng nhập Gemini API Key ở thanh bên để bắt đầu.")
-    st.stop()
-
 # Step 1: Load and Preview Data
 st.subheader("1. Dữ liệu khách hàng")
-if st.button("📥 Tải dữ liệu từ Google Sheet"):
-    try:
-        csv_url = get_csv_url(sheet_url)
-        response = requests.get(csv_url)
-        response.raise_for_status()
-        response.encoding = 'utf-8'  # Force UTF-8 encoding
-        df = pd.read_csv(io.StringIO(response.text))
-        st.session_state['df_leads'] = df
-        st.success(f"Đã tải {len(df)} khách hàng thành công!")
-    except Exception as e:
-        st.error(f"Lỗi khi tải dữ liệu: {e}")
+
+# Cho phép chọn nguồn dữ liệu (Google Sheet hoặc tải tệp trực tiếp)
+data_source = st.radio("Chọn nguồn nhập dữ liệu khách hàng:", ["Google Sheet Link", "Tải lên tệp CSV/Excel từ máy tính"], horizontal=True)
+
+if data_source == "Google Sheet Link":
+    sheet_url = st.text_input("Nhập Google Sheet URL (Phải ở chế độ chia sẻ bất kỳ ai có liên kết đều có thể xem):", 
+                             value="https://docs.google.com/spreadsheets/d/1PtYHhTapnRp8bOVYCxkAaEb37G_7iva99xnmoO-lvG0/edit?usp=sharing")
+    if st.button("📥 Tải dữ liệu từ Google Sheet"):
+        try:
+            csv_url = get_csv_url(sheet_url)
+            response = requests.get(csv_url)
+            response.raise_for_status()
+            response.encoding = 'utf-8'  # Force UTF-8 encoding
+            df = pd.read_csv(io.StringIO(response.text))
+            st.session_state['df_leads'] = df
+            if 'scored_df' in st.session_state:
+                del st.session_state['scored_df']
+            st.success(f"Đã tải {len(df)} khách hàng thành công từ Google Sheet!")
+        except Exception as e:
+            st.error(f"Lỗi khi tải dữ liệu từ Google Sheet: {e}")
+else:
+    uploaded_file = st.file_uploader("Tải lên tệp danh sách khách hàng (chấp nhận .csv, .xlsx):", type=["csv", "xlsx"])
+    if uploaded_file is not None:
+        try:
+            if uploaded_file.name.endswith('.csv'):
+                df = pd.read_csv(uploaded_file)
+            else:
+                df = pd.read_excel(uploaded_file)
+            st.session_state['df_leads'] = df
+            if 'scored_df' in st.session_state:
+                del st.session_state['scored_df']
+            st.success(f"Đã tải {len(df)} khách hàng thành công từ tệp của bạn!")
+        except Exception as e:
+            st.error(f"Lỗi khi tải dữ liệu từ tệp tin: {e}")
 
 if 'df_leads' in st.session_state:
     st.dataframe(st.session_state['df_leads'], use_container_width=True)
