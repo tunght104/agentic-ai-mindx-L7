@@ -7,6 +7,9 @@ import json
 import os
 from dotenv import load_dotenv
 
+# Load các biến môi trường từ .env
+load_dotenv()
+
 # Tự động đồng bộ credentials.json sang .streamlit/secrets.toml nếu chạy ở local
 if os.path.exists("credentials.json") and not os.path.exists(".streamlit/secrets.toml"):
     try:
@@ -52,6 +55,35 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # Helper Functions
+def send_telegram_notification(ten_khach, sdt, nhu_cau, reasoning):
+    """Gửi thông báo cảnh báo khách hàng VIP lên Telegram"""
+    bot_token = os.getenv("TELEGRAM_BOT_TOKEN") or os.getenv("BOT_TOKEN")
+    chat_id = os.getenv("TELEGRAM_CHAT_ID") or os.getenv("CHAT_ID")
+    if not bot_token or not chat_id:
+        return False
+        
+    message = (
+        "🌟 <b>PHÁT HIỆN KHÁCH HÀNG VIP MỚI!</b>\n"
+        f"👤 <b>Tên:</b> {ten_khach}\n"
+        f"📞 <b>SĐT:</b> <code>{sdt}</code> (Click để copy)\n"
+        f"📝 <b>Nhu cầu:</b> {nhu_cau}\n"
+        f"💡 <b>Lý do phân loại:</b> {reasoning}"
+    )
+    
+    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+    payload = {
+        "chat_id": chat_id,
+        "text": message,
+        "parse_mode": "HTML",
+        "disable_web_page_preview": True
+    }
+    try:
+        response = requests.post(url, json=payload, timeout=10)
+        return response.status_code == 200
+    except Exception as e:
+        print(f"Lỗi gửi thông báo Telegram: {e}")
+        return False
+
 def load_data_from_url(sheet_url):
     """Downloads data from Google Sheet URL using Streamlit's official GSheetsConnection."""
     from streamlit_gsheets import GSheetsConnection
@@ -232,6 +264,99 @@ api_key = st.sidebar.text_input("Gemini API Key", type="password", value=os.gete
 if not api_key:
     st.sidebar.info("💡 Điền Gemini API Key ở trên để sử dụng mô hình AI. Nếu không điền, bạn vẫn có thể sử dụng chế độ chấm điểm bằng Từ khóa (Rule-based).")
 
+# Sidebar - Telegram Bot Controls
+st.sidebar.divider()
+st.sidebar.subheader("🤖 Quản lý Telegram Bot")
+bot_token = st.sidebar.text_input("Telegram Bot Token", type="password", value=os.getenv("TELEGRAM_BOT_TOKEN", ""))
+chat_id = st.sidebar.text_input("Telegram Chat ID", value=os.getenv("TELEGRAM_CHAT_ID", ""))
+
+if bot_token:
+    os.environ["TELEGRAM_BOT_TOKEN"] = bot_token
+if chat_id:
+    os.environ["TELEGRAM_CHAT_ID"] = chat_id
+
+import signal
+
+if "bot_process" not in st.session_state:
+    st.session_state["bot_process"] = None
+
+def is_bot_running(pid):
+    if pid is None:
+        return False
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
+
+def start_bot():
+    if not bot_token or not chat_id:
+        st.sidebar.error("❌ Cần điền đầy đủ Bot Token và Chat ID.")
+        return
+    
+    # Lấy Sheet URL từ session state hoặc dùng mặc định
+    curr_sheet_url = st.session_state.get("sheet_url", "https://docs.google.com/spreadsheets/d/1PtYHhTapnRp8bOVYCxkAaEb37G_7iva99xnmoO-lvG0/edit?usp=sharing")
+    
+    # Lưu cấu hình mới
+    with open(".env", "w") as f:
+        f.write(f"TELEGRAM_BOT_TOKEN={bot_token}\n")
+        f.write(f"TELEGRAM_CHAT_ID={chat_id}\n")
+        if api_key:
+            f.write(f"GEMINI_API_KEY={api_key}\n")
+        f.write(f"GSHEET_URL={curr_sheet_url}\n")
+        f.write("CREDENTIALS_PATH=credentials.json\n")
+        
+    try:
+        # Khởi chạy main_bot.py và ghi log
+        with open("bot_service.log", "w") as log_file:
+            process = subprocess.Popen(
+                [os.path.join(".venv", "bin", "python"), "main_bot.py"],
+                stdout=log_file,
+                stderr=subprocess.STDOUT,
+                text=True,
+                preexec_fn=os.setsid
+            )
+        st.session_state["bot_process"] = process.pid
+        st.sidebar.success(f"🚀 Đang khởi chạy Bot (PID: {process.pid})")
+    except Exception as e:
+        st.sidebar.error(f"❌ Lỗi khởi chạy Bot: {e}")
+
+def stop_bot():
+    pid = st.session_state["bot_process"]
+    if pid:
+        try:
+            os.killpg(os.getpgid(pid), signal.SIGTERM)
+            st.session_state["bot_process"] = None
+            st.sidebar.info("🛑 Đã dừng Telegram Bot.")
+        except Exception as e:
+            st.sidebar.error(f"❌ Lỗi khi dừng Bot: {e}")
+            st.session_state["bot_process"] = None
+
+import subprocess
+pid = st.session_state["bot_process"]
+if pid and is_bot_running(pid):
+    st.sidebar.success(f"🟢 Bot đang chạy (PID: {pid})")
+    if st.sidebar.button("🛑 Dừng Telegram Bot"):
+        stop_bot()
+        st.rerun()
+else:
+    st.session_state["bot_process"] = None
+    st.sidebar.warning("🔴 Bot đang dừng")
+    if st.sidebar.button("🚀 Khởi chạy Telegram Bot"):
+        start_bot()
+        st.rerun()
+
+if os.path.exists("bot_service.log"):
+    with st.sidebar.expander("📝 Xem log của Bot"):
+        try:
+            with open("bot_service.log", "r") as f:
+                logs = f.readlines()
+            st.code("".join(logs[-15:]), language="text")
+        except Exception:
+            st.code("Chưa có log.", language="text")
+        if st.button("🔄 Làm mới log"):
+            st.rerun()
+
 # Main UI
 st.title("🏡 Real Estate Lead Scoring AI")
 st.markdown("Hệ thống tự động đánh giá và phân loại khách hàng tiềm năng bằng trí tuệ nhân tạo.")
@@ -244,7 +369,8 @@ data_source = st.radio("Chọn nguồn nhập dữ liệu khách hàng:", ["Goog
 
 if data_source == "Google Sheet Link":
     sheet_url = st.text_input("Nhập Google Sheet URL:", 
-                             value="https://docs.google.com/spreadsheets/d/1PtYHhTapnRp8bOVYCxkAaEb37G_7iva99xnmoO-lvG0/edit?usp=sharing")
+                             value="https://docs.google.com/spreadsheets/d/1PtYHhTapnRp8bOVYCxkAaEb37G_7iva99xnmoO-lvG0/edit?usp=sharing",
+                             key="sheet_url")
     if st.button("📥 Tải dữ liệu từ Google Sheet"):
         try:
             df = load_data_from_url(sheet_url)
@@ -276,10 +402,12 @@ if 'df_leads' in st.session_state:
     st.divider()
     st.subheader("2. Chấm điểm")
     
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
     with col1:
         use_ai = st.toggle("Sử dụng AI (Cần Gemini Key)", value=True)
     with col2:
+        send_telegram = st.checkbox("Gửi Telegram cho khách VIP", value=True)
+    with col3:
         start_button = st.button("🚀 Bắt đầu chấm điểm")
     
     if start_button:
@@ -306,6 +434,16 @@ if 'df_leads' in st.session_state:
                 score_result = score_lead(model, row)
             else:
                 score_result = keyword_scoring(row['nhu_cau_mo_ta'])
+            
+            # Gửi thông báo Telegram tức thì nếu khách hàng là VIP
+            category = score_result.get("category")
+            if send_telegram and category == "VIP":
+                send_telegram_notification(
+                    row['ten_khach'],
+                    row['sdt'],
+                    row['nhu_cau_mo_ta'],
+                    score_result.get("reasoning")
+                )
             
             # Combine original data with results
             combined = row.to_dict()
