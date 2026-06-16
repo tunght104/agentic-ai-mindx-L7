@@ -7,6 +7,26 @@ import json
 import os
 from dotenv import load_dotenv
 
+# Tự động đồng bộ credentials.json sang .streamlit/secrets.toml nếu chạy ở local
+if os.path.exists("credentials.json") and not os.path.exists(".streamlit/secrets.toml"):
+    try:
+        os.makedirs(".streamlit", exist_ok=True)
+        with open("credentials.json", "r", encoding="utf-8") as f:
+            creds = json.load(f)
+        toml_content = "[connections.gsheets]\n"
+        for k, v in creds.items():
+            if k == "private_key":
+                toml_content += f'private_key = """{v}"""\n'
+            elif isinstance(v, str):
+                escaped_v = v.replace('"', '\\"')
+                toml_content += f'{k} = "{escaped_v}"\n'
+            else:
+                toml_content += f'{k} = {json.dumps(v)}\n'
+        with open(".streamlit/secrets.toml", "w", encoding="utf-8") as f:
+            f.write(toml_content)
+    except Exception as e:
+        pass
+
 # Page configuration
 st.set_page_config(page_title="Real Estate Lead Scoring AI", page_icon="🏡", layout="wide")
 
