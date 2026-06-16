@@ -32,11 +32,11 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # Helper Functions
-def get_csv_url(url):
-    """Converts a standard Google Sheet URL to a CSV export URL."""
-    if "/edit" in url:
-        return url.split("/edit")[0] + "/export?format=csv"
-    return url
+def load_data_from_url(sheet_url):
+    """Downloads data from Google Sheet URL using Streamlit's official GSheetsConnection."""
+    from streamlit_gsheets import GSheetsConnection
+    conn = st.connection("gsheets", type=GSheetsConnection)
+    return conn.read(spreadsheet=sheet_url, ttl=0)
 
 def load_scoring_skill():
     """Loads the scoring criteria from the markdown file."""
@@ -136,15 +136,11 @@ st.subheader("1. Dữ liệu khách hàng")
 data_source = st.radio("Chọn nguồn nhập dữ liệu khách hàng:", ["Google Sheet Link", "Tải lên tệp CSV/Excel từ máy tính"], horizontal=True)
 
 if data_source == "Google Sheet Link":
-    sheet_url = st.text_input("Nhập Google Sheet URL (Phải ở chế độ chia sẻ bất kỳ ai có liên kết đều có thể xem):", 
+    sheet_url = st.text_input("Nhập Google Sheet URL:", 
                              value="https://docs.google.com/spreadsheets/d/1PtYHhTapnRp8bOVYCxkAaEb37G_7iva99xnmoO-lvG0/edit?usp=sharing")
     if st.button("📥 Tải dữ liệu từ Google Sheet"):
         try:
-            csv_url = get_csv_url(sheet_url)
-            response = requests.get(csv_url)
-            response.raise_for_status()
-            response.encoding = 'utf-8'  # Force UTF-8 encoding
-            df = pd.read_csv(io.StringIO(response.text))
+            df = load_data_from_url(sheet_url)
             st.session_state['df_leads'] = df
             if 'scored_df' in st.session_state:
                 del st.session_state['scored_df']

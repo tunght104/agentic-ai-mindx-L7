@@ -5,3 +5,4 @@ requests
 tabulate
 streamlit
 openpyxl
+st-gsheets-connection
