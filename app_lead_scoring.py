@@ -53,10 +53,30 @@ st.markdown("""
 
 # Helper Functions
 def load_data_from_url(sheet_url):
-    """Downloads data from Google Sheet URL using Streamlit's official GSheetsConnection."""
-    from streamlit_gsheets import GSheetsConnection
-    conn = st.connection("gsheets", type=GSheetsConnection)
-    return conn.read(spreadsheet=sheet_url, ttl=0)
+    """Downloads data using official googleauth and gspread with Service Account."""
+    import gspread
+    from google.oauth2.service_account import Credentials
+    
+    # 1. Định nghĩa quyền truy cập (Scopes)
+    scopes = [
+        "https://www.googleapis.com/auth/spreadsheets",
+        "https://www.googleapis.com/auth/drive"
+    ]
+    
+    # 2. Lấy thông tin cấu hình từ Streamlit Secrets (đã được đồng bộ từ credentials.json)
+    secret_dict = dict(st.secrets["connections"]["gsheets"])
+    
+    # 3. Kích hoạt thông tin xác thực
+    creds = Credentials.from_service_account_info(secret_dict, scopes=scopes)
+    client = gspread.authorize(creds)
+    
+    # 4. Mở Google Sheet bằng URL và lấy toàn bộ dữ liệu ở Sheet đầu tiên (Worksheet 0)
+    sheet = client.open_by_url(sheet_url)
+    worksheet = sheet.get_worksheet(0)
+    
+    # 5. Chuyển dữ liệu thành Pandas DataFrame giống như hàm cũ của bạn
+    data = worksheet.get_all_records()
+    return pd.DataFrame(data)
 
 def load_scoring_skill():
     """Loads the scoring criteria from the markdown file."""
