@@ -58,6 +58,12 @@ def load_data_from_url(sheet_url):
     conn = st.connection("gsheets", type=GSheetsConnection)
     return conn.read(spreadsheet=sheet_url, ttl=0)
 
+def write_data_to_url(sheet_url, df_scored):
+    """Writes the scored data back to the Google Sheet URL."""
+    from streamlit_gsheets import GSheetsConnection
+    conn = st.connection("gsheets", type=GSheetsConnection)
+    conn.update(spreadsheet=sheet_url, data=df_scored)
+
 def load_scoring_skill():
     """Loads the scoring criteria from the markdown file."""
     try:
@@ -254,11 +260,29 @@ if 'df_leads' in st.session_state:
         
         excel_data = output.getvalue()
         
-        st.download_button(
-            label="📥 Tải về file Excel kết quả",
-            data=excel_data,
-            file_name="leads_scored_results.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
+        if data_source == "Google Sheet Link":
+            col1, col2 = st.columns(2)
+            with col1:
+                st.download_button(
+                    label="📥 Tải về file Excel kết quả",
+                    data=excel_data,
+                    file_name="leads_scored_results.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+            with col2:
+                if st.button("🔄 Đồng bộ kết quả trực tiếp về Google Sheet"):
+                    with st.spinner("Đang đồng bộ dữ liệu về Google Sheet..."):
+                        try:
+                            write_data_to_url(sheet_url, st.session_state['scored_df'])
+                            st.success("✅ Đã đồng bộ kết quả lên Google Sheet thành công!")
+                        except Exception as e:
+                            st.error(f"❌ Lỗi khi đồng bộ: {e}")
+        else:
+            st.download_button(
+                label="📥 Tải về file Excel kết quả",
+                data=excel_data,
+                file_name="leads_scored_results.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
 else:
     st.info("Nhấn nút 'Tải dữ liệu' để bắt đầu.")
