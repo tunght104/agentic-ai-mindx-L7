@@ -53,44 +53,10 @@ st.markdown("""
 
 # Helper Functions
 def load_data_from_url(sheet_url):
-    """Downloads data using official googleauth and gspread with Service Account."""
-    import gspread
-    from google.oauth2.service_account import Credentials
-    
-    # 1. Định nghĩa quyền truy cập (Scopes)
-    scopes = [
-        "https://www.googleapis.com/auth/spreadsheets",
-        "https://www.googleapis.com/auth/drive"
-    ]
-    
-    # 2. Lấy thông tin cấu hình (Ưu tiên Streamlit Secrets, sau đó tới credentials.json)
-    if "connections" in st.secrets and "gsheets" in st.secrets["connections"]:
-        secret_dict = dict(st.secrets["connections"]["gsheets"])
-    elif os.path.exists("credentials.json"):
-        with open("credentials.json", "r", encoding="utf-8") as f:
-            secret_dict = json.load(f)
-    else:
-        raise FileNotFoundError("Không tìm thấy cấu hình Service Account (vui lòng thiết lập Streamlit Secrets hoặc thêm tệp credentials.json).")
-    
-    # Xử lý ký tự xuống dòng và làm sạch định dạng private key theo chuẩn PEM (tránh lỗi Unable to load PEM file)
-    if "private_key" in secret_dict and isinstance(secret_dict["private_key"], str):
-        # Thay thế literal \n bằng xuống dòng thực tế
-        pk_cleaned = secret_dict["private_key"].replace("\\n", "\n")
-        # Loại bỏ các dòng trống và khoảng trắng thừa đầu/cuối mỗi dòng (đảm bảo độ dài dòng base64 chuẩn 64 ký tự)
-        pk_lines = [line.strip() for line in pk_cleaned.split("\n") if line.strip()]
-        secret_dict["private_key"] = "\n".join(pk_lines)
-        
-    # 3. Kích hoạt thông tin xác thực
-    creds = Credentials.from_service_account_info(secret_dict, scopes=scopes)
-    client = gspread.authorize(creds)
-    
-    # 4. Mở Google Sheet bằng URL và lấy toàn bộ dữ liệu ở Sheet đầu tiên (Worksheet 0)
-    sheet = client.open_by_url(sheet_url)
-    worksheet = sheet.get_worksheet(0)
-    
-    # 5. Chuyển dữ liệu thành Pandas DataFrame giống như hàm cũ của bạn
-    data = worksheet.get_all_records()
-    return pd.DataFrame(data)
+    """Downloads data from Google Sheet URL using Streamlit's official GSheetsConnection."""
+    from streamlit_gsheets import GSheetsConnection
+    conn = st.connection("gsheets", type=GSheetsConnection)
+    return conn.read(spreadsheet=sheet_url, ttl=0)
 
 def load_scoring_skill():
     """Loads the scoring criteria from the markdown file."""
