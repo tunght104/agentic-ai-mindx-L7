@@ -72,9 +72,13 @@ def load_data_from_url(sheet_url):
     else:
         raise FileNotFoundError("Không tìm thấy cấu hình Service Account (vui lòng thiết lập Streamlit Secrets hoặc thêm tệp credentials.json).")
     
-    # Xử lý ký tự xuống dòng trong private key để tránh lỗi giải mã khóa trên Streamlit Cloud
+    # Xử lý ký tự xuống dòng và làm sạch định dạng private key theo chuẩn PEM (tránh lỗi Unable to load PEM file)
     if "private_key" in secret_dict and isinstance(secret_dict["private_key"], str):
-        secret_dict["private_key"] = secret_dict["private_key"].replace("\\n", "\n")
+        # Thay thế literal \n bằng xuống dòng thực tế
+        pk_cleaned = secret_dict["private_key"].replace("\\n", "\n")
+        # Loại bỏ các dòng trống và khoảng trắng thừa đầu/cuối mỗi dòng (đảm bảo độ dài dòng base64 chuẩn 64 ký tự)
+        pk_lines = [line.strip() for line in pk_cleaned.split("\n") if line.strip()]
+        secret_dict["private_key"] = "\n".join(pk_lines)
         
     # 3. Kích hoạt thông tin xác thực
     creds = Credentials.from_service_account_info(secret_dict, scopes=scopes)
