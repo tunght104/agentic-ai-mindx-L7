@@ -6,3 +6,4 @@ tabulate
 streamlit
 openpyxl
 st-gsheets-connection
+gspread

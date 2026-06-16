@@ -63,9 +63,19 @@ def load_data_from_url(sheet_url):
         "https://www.googleapis.com/auth/drive"
     ]
     
-    # 2. Lấy thông tin cấu hình từ Streamlit Secrets (đã được đồng bộ từ credentials.json)
-    secret_dict = dict(st.secrets["connections"]["gsheets"])
+    # 2. Lấy thông tin cấu hình (Ưu tiên Streamlit Secrets, sau đó tới credentials.json)
+    if "connections" in st.secrets and "gsheets" in st.secrets["connections"]:
+        secret_dict = dict(st.secrets["connections"]["gsheets"])
+    elif os.path.exists("credentials.json"):
+        with open("credentials.json", "r", encoding="utf-8") as f:
+            secret_dict = json.load(f)
+    else:
+        raise FileNotFoundError("Không tìm thấy cấu hình Service Account (vui lòng thiết lập Streamlit Secrets hoặc thêm tệp credentials.json).")
     
+    # Xử lý ký tự xuống dòng trong private key để tránh lỗi giải mã khóa trên Streamlit Cloud
+    if "private_key" in secret_dict and isinstance(secret_dict["private_key"], str):
+        secret_dict["private_key"] = secret_dict["private_key"].replace("\\n", "\n")
+        
     # 3. Kích hoạt thông tin xác thực
     creds = Credentials.from_service_account_info(secret_dict, scopes=scopes)
     client = gspread.authorize(creds)
